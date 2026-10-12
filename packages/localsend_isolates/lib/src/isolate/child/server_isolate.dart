@@ -97,11 +97,15 @@ class HttpServerReceiveConfig {
 /// on the server event stream and may cancel the session via
 /// [HttpServerCancelSessionTask].
 class HttpServerPrepareUploadDecisionTask implements BaseHttpServerTask {
+  /// The session ID of the prepare-upload request being answered.
+  final String sessionId;
+
   /// The receive configuration including the accepted file IDs.
   /// `null` declines the request.
   final HttpServerReceiveConfig? config;
 
   HttpServerPrepareUploadDecisionTask({
+    required this.sessionId,
     required this.config,
   });
 }
@@ -375,6 +379,7 @@ final _receiveSessionProvider = Provider((ref) => _ReceiveSessionHolder());
 
 class _ReceiveSessionHolder {
   _ReceiveSession? session;
+  String? pendingSessionId;
 }
 
 Future<void> setupHttpServerIsolate(
@@ -458,6 +463,7 @@ Future<void> setupHttpServerIsolate(
                   // The Rust server is the authority on the single-session
                   // invariant: a new request means the old session is over.
                   holder.session = null;
+                  holder.pendingSessionId = sessionId;
                   emit(
                     HttpServerPrepareUploadEvent(
                       sessionId: sessionId,
@@ -505,6 +511,9 @@ Future<void> setupHttpServerIsolate(
                   if (holder.session?.config.sessionId == sessionId) {
                     holder.session = null;
                   }
+                  if (holder.pendingSessionId == sessionId) {
+                    holder.pendingSessionId = null;
+                  }
                   emit(
                     HttpServerSessionEndEvent(
                       sessionId: sessionId,
@@ -512,6 +521,12 @@ Future<void> setupHttpServerIsolate(
                     ),
                   );
                 case RsServerEvent_PrepareUploadAborted(:final sessionId):
+                  if (holder.pendingSessionId == sessionId) {
+                    holder.pendingSessionId = null;
+                  }
+                  if (holder.session?.config.sessionId == sessionId) {
+                    holder.session = null;
+                  }
                   emit(
                     HttpServerPrepareUploadAbortedEvent(
                       sessionId: sessionId,
@@ -543,12 +558,16 @@ Future<void> setupHttpServerIsolate(
                 case RsServerEvent_Show(:final args):
                   emit(HttpServerShowEvent(args: args));
                 case RsServerEvent_ListenerFailed(:final error):
-                  ref.read(_receiveSessionProvider).session = null;
+                  final holder = ref.read(_receiveSessionProvider);
+                  holder.session = null;
+                  holder.pendingSessionId = null;
                   emit(HttpServerListenerFailedEvent(error: error));
               }
             }
           } finally {
-            ref.read(_receiveSessionProvider).session = null;
+            final holder = ref.read(_receiveSessionProvider);
+            holder.session = null;
+            holder.pendingSessionId = null;
             sendToMain(
               IsolateTaskStreamResult.done(
                 id: task.id,
@@ -557,7 +576,9 @@ Future<void> setupHttpServerIsolate(
           }
           return;
         case HttpServerStopTask _:
-          ref.read(_receiveSessionProvider).session = null;
+          final holder = ref.read(_receiveSessionProvider);
+          holder.session = null;
+          holder.pendingSessionId = null;
           await ref.read(httpServerProvider).stop();
           sendToMain(
             IsolateTaskStreamResult.done(
@@ -566,16 +587,36 @@ Future<void> setupHttpServerIsolate(
           );
           return;
         case HttpServerPrepareUploadDecisionTask decisionTask:
+          final holder = ref.read(_receiveSessionProvider);
+          if (holder.pendingSessionId != decisionTask.sessionId ||
+              (decisionTask.config != null && decisionTask.config!.sessionId != decisionTask.sessionId)) {
+            _logger.fine('Ignoring stale prepare-upload decision for ${decisionTask.sessionId}');
+            return;
+          }
+
           final config = decisionTask.config;
           // An empty fileNameMap accepts nothing: the Rust server responds
           // with 204 and creates no session.
-          ref.read(_receiveSessionProvider).session = config == null || config.fileNameMap.isEmpty ? null : _ReceiveSession(config);
-          await ref.read(httpServerProvider).respondPrepareUpload(acceptedFileIds: config?.fileNameMap.keys.toList());
+          holder.pendingSessionId = null;
+          holder.session = config == null || config.fileNameMap.isEmpty ? null : _ReceiveSession(config);
+          try {
+            await ref
+                .read(httpServerProvider)
+                .respondPrepareUpload(sessionId: decisionTask.sessionId, acceptedFileIds: config?.fileNameMap.keys.toList());
+          } catch (_) {
+            if (holder.session?.config.sessionId == decisionTask.sessionId) {
+              holder.session = null;
+            }
+            rethrow;
+          }
           return;
         case HttpServerCancelSessionTask cancelTask:
           final holder = ref.read(_receiveSessionProvider);
           if (holder.session?.config.sessionId == cancelTask.sessionId) {
             holder.session = null;
+          }
+          if (holder.pendingSessionId == cancelTask.sessionId) {
+            holder.pendingSessionId = null;
           }
           await ref.read(httpServerProvider).cancelSession(sessionId: cancelTask.sessionId);
           return;

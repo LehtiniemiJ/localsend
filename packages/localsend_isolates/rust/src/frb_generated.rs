@@ -1744,6 +1744,7 @@ fn wire__crate__api__server__RsHttpServer_respond_prepare_upload_impl(
             let api_that = <RustOpaqueMoi<
                 flutter_rust_bridge::for_generated::RustAutoOpaqueInner<RsHttpServer>,
             >>::sse_decode(&mut deserializer);
+            let api_session_id = <String>::sse_decode(&mut deserializer);
             let api_accepted_file_ids = <Option<Vec<String>>>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
@@ -1768,6 +1769,7 @@ fn wire__crate__api__server__RsHttpServer_respond_prepare_upload_impl(
                         let api_that_guard = api_that_guard.unwrap();
                         let output_ok = crate::api::server::RsHttpServer::respond_prepare_upload(
                             &*api_that_guard,
+                            api_session_id,
                             api_accepted_file_ids,
                         )
                         .await?;

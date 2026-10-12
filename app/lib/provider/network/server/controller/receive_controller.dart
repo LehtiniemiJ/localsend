@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:collection/collection.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:localsend_app/model/state/server/receive_session_state.dart';
 import 'package:localsend_app/model/state/server/receiving_file.dart';
@@ -22,16 +21,20 @@ import 'package:localsend_app/provider/security_provider.dart';
 import 'package:localsend_app/provider/selection/selected_receiving_files_provider.dart';
 import 'package:localsend_app/provider/selection/selected_sending_files_provider.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
+import 'package:localsend_app/util/duplicate_file_helper.dart';
 import 'package:localsend_app/util/native/directories.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:localsend_app/util/native/tray_helper.dart';
+import 'package:localsend_app/widget/dialogs/duplicate_check_dialog.dart';
 import 'package:localsend_app/widget/dialogs/open_file_dialog.dart';
 import 'package:localsend_isolates/isolate.dart';
 import 'package:localsend_isolates/model/device.dart';
 import 'package:localsend_isolates/model/file_status.dart';
 import 'package:localsend_isolates/model/file_type.dart';
 import 'package:localsend_isolates/model/session_status.dart';
+import 'package:localsend_isolates/rust/api/cancel.dart' as rust_cancel;
 import 'package:localsend_isolates/rust/api/server.dart' show SessionEndReasonV2;
+import 'package:localsend_isolates/util/file_hash.dart' as file_hash;
 import 'package:localsend_isolates/util/rust.dart';
 import 'package:localsend_isolates/util/transfer_notification.dart';
 import 'package:logging/logging.dart';
@@ -50,6 +53,28 @@ class ReceiveController {
   final ServerUtils server;
 
   ReceiveController(this.server);
+
+  String? _pendingSessionId;
+  int _scanGeneration = 0;
+  rust_cancel.RsCancellationToken? _scanCancelToken;
+  Future<void>? _duplicateScan;
+  String? _displayedSessionId;
+  DialogRoute<void>? _duplicateCheckRoute;
+
+  /// Invalidates pending work before closing or restarting the server.
+  void invalidatePendingRequest() {
+    final route = _duplicateCheckRoute;
+    _duplicateCheckRoute = null;
+    if (route?.isActive == true) {
+      route!.navigator?.removeRoute(route);
+    }
+    _pendingSessionId = null;
+    _scanGeneration++;
+    _scanCancelToken?.cancel();
+    _scanCancelToken = null;
+    _duplicateScan = null;
+    _displayedSessionId = null;
+  }
 
   /// A device registered itself on this server.
   Future<void> onRegister(HttpServerRegisterEvent event) async {
@@ -75,6 +100,8 @@ class ReceiveController {
       closeSession();
     }
 
+    _pendingSessionId = event.sessionId;
+    final preparationGeneration = ++_scanGeneration;
     final settings = server.ref.read(settingsProvider);
     final destinationDir = settings.destination ?? await getDefaultDestinationDirectory();
     final cacheDir = await getCacheDirectory();
@@ -82,6 +109,10 @@ class ReceiveController {
     final files = {
       for (final entry in event.files.entries) entry.key: entry.value.toDart(),
     };
+    final saveToGallery = checkPlatformWithGallery() && settings.saveToGallery && files.values.every((f) => !f.fileName.contains('/'));
+    if (_pendingSessionId != sessionId || _scanGeneration != preparationGeneration || server.getStateOrNull() == null) {
+      return;
+    }
 
     // The fingerprint of the sender's mTLS certificate cannot be spoofed, unlike the
     // self-reported fingerprint in the JSON payload which is only used as fallback
@@ -113,18 +144,19 @@ class ReceiveController {
           endTime: null,
           destinationDirectory: destinationDir,
           cacheDirectory: cacheDir,
-          saveToGallery: checkPlatformWithGallery() && settings.saveToGallery && files.values.every((f) => !f.fileName.contains('/')),
+          saveToGallery: saveToGallery,
           createdDirectories: {},
         ),
       ),
     );
 
-    server.ref
-        .notifier(fileTransferProvider)
-        .setStatuses(
-          sessionId: sessionId,
-          statuses: {for (final file in files.values) file.id: FileStatus.queue},
-        );
+    server.ref.notifier(selectedReceivingFilesProvider).setFiles(files.values.toList());
+    await _startDuplicateScan(sessionId);
+    final preparedSession = server.getStateOrNull()?.session;
+    if (_pendingSessionId != sessionId || preparedSession?.sessionId != sessionId || preparedSession?.status != SessionStatus.waiting) {
+      return;
+    }
+    final duplicateFileIds = preparedSession!.duplicateFileIds;
 
     bool quickSave = settings.quickSave && server.getState().session?.message == null;
     final quickSaveFromFavorites = settings.quickSaveFromFavorites && server.getState().session?.message == null;
@@ -152,7 +184,8 @@ class ReceiveController {
 
       // accept all files
       await acceptFileRequest({
-        for (final f in files.values) f.id: f.fileName,
+        for (final f in files.values)
+          if (!duplicateFileIds.contains(f.id)) f.id: f.fileName,
       });
       return;
     }
@@ -161,6 +194,9 @@ class ReceiveController {
       await showFromTray();
     }
 
+    if (_pendingSessionId != sessionId || server.getStateOrNull()?.session?.sessionId != sessionId) {
+      return;
+    }
     final message = server.getState().session?.message;
     if (message != null) {
       // Message already received
@@ -181,17 +217,26 @@ class ReceiveController {
           );
     }
 
+    if (_pendingSessionId != sessionId || server.getStateOrNull()?.session?.sessionId != sessionId) {
+      return;
+    }
+
     final receiveProvider = ViewProvider((ref) {
       // No select: comparing the selected session runs the dart_mappable deep equality
       // over the whole files map on every state change.
-      final session = ref.watch(serverProvider)?.session;
+      final currentSession = ref.watch(serverProvider)?.session;
+      final session = currentSession?.sessionId == event.sessionId ? currentSession : null;
       return ReceivePageVm(
         status: session?.status,
         sender: session?.sender ?? Device.empty,
         showSenderInfo: true,
         files: session?.files.values.map((f) => f.file).toList() ?? [],
+        duplicateFileIds: session?.duplicateFileIds ?? {},
         message: message,
         onAccept: () async {
+          if (ref.read(serverProvider)?.session?.sessionId != event.sessionId) {
+            return;
+          }
           if (message != null) {
             // accept nothing
             await ref.notifier(serverProvider).acceptFileRequest({});
@@ -199,7 +244,7 @@ class ReceiveController {
           }
 
           final sessionId = ref.read(serverProvider)?.session?.sessionId;
-          if (sessionId == null) {
+          if (sessionId == null || sessionId != event.sessionId) {
             return;
           }
 
@@ -220,16 +265,19 @@ class ReceiveController {
           await ref.notifier(serverProvider).acceptFileRequest(selectedFiles);
         },
         onDecline: () {
-          ref.notifier(serverProvider).declineFileRequest();
+          if (ref.read(serverProvider)?.session?.sessionId == event.sessionId) {
+            ref.notifier(serverProvider).declineFileRequest();
+          }
         },
         onClose: () {
-          ref.notifier(serverProvider).closeSession();
+          if (ref.read(serverProvider)?.session?.sessionId == event.sessionId) {
+            ref.notifier(serverProvider).closeSession();
+          }
         },
       );
     });
 
-    server.ref.notifier(selectedReceivingFilesProvider).setFiles(files.values.toList());
-
+    _displayedSessionId = sessionId;
     // ignore: use_build_context_synchronously, unawaited_futures
     Routerino.context.push(() => ReceivePage(receiveProvider));
   }
@@ -448,6 +496,9 @@ class ReceiveController {
 
   /// An upload session ended on the Rust server.
   void onSessionEnd(HttpServerSessionEndEvent event) {
+    if (_pendingSessionId == event.sessionId) {
+      invalidatePendingRequest();
+    }
     final receiveSession = server.getStateOrNull()?.session;
     if (receiveSession == null || receiveSession.sessionId != event.sessionId) {
       return;
@@ -464,8 +515,17 @@ class ReceiveController {
 
   /// The sender aborted the request while the user was still deciding.
   void onPrepareUploadAborted(HttpServerPrepareUploadAbortedEvent event) {
+    final wasDisplayed = _displayedSessionId == event.sessionId;
+    if (_pendingSessionId == event.sessionId) {
+      invalidatePendingRequest();
+    }
     final receiveSession = server.getStateOrNull()?.session;
     if (receiveSession == null || receiveSession.sessionId != event.sessionId || receiveSession.status != SessionStatus.waiting) {
+      return;
+    }
+
+    if (!wasDisplayed) {
+      closeSession();
       return;
     }
 
@@ -524,15 +584,28 @@ class ReceiveController {
 
   /// Accepts the file request with the given [fileNameMap] (file id -> desired file name).
   Future<void> acceptFileRequest(Map<String, String> fileNameMap) async {
+    final expectedSessionId = server.getStateOrNull()?.session?.sessionId;
+    if (expectedSessionId == null) {
+      return;
+    }
+    var selection = Map.of(fileNameMap);
+    while (_duplicateScan != null) {
+      await _duplicateScan!;
+      // A destination change may have started another scan while awaiting.
+      selection = Map.of(server.ref.read(selectedReceivingFilesProvider));
+    }
+    fileNameMap = selection;
     final session = server.getStateOrNull()?.session;
-    if (session == null || session.status != SessionStatus.waiting) {
+    if (session == null || session.sessionId != expectedSessionId || session.status != SessionStatus.waiting) {
       return;
     }
 
     if (fileNameMap.isEmpty) {
       // nothing selected, the Rust server responds with 204 and creates no session
       // This usually happens for message transfers
-      server.ref.redux(parentIsolateProvider).dispatch(IsolateHttpServerPrepareUploadDecisionAction(config: _buildReceiveConfig(session, {})));
+      server.ref
+          .redux(parentIsolateProvider)
+          .dispatch(IsolateHttpServerPrepareUploadDecisionAction(sessionId: session.sessionId, config: _buildReceiveConfig(session, {})));
       closeSession();
       return;
     }
@@ -591,17 +664,114 @@ class ReceiveController {
     //   from the background,
     // - the service may ask for the notification permission, which Android cancels when it overlaps
     //   with the storage permission requests above.
-    TransferNotification.start(sessionId: session.sessionId, receiving: true);
-
     // From here on, the server isolate receives all accepted files on its own
     // and reports back via upload progress/result events.
     final updatedSession = server.getStateOrNull()?.session;
-    if (updatedSession == null) {
+    if (updatedSession == null || updatedSession.sessionId != session.sessionId || updatedSession.status != SessionStatus.sending) {
       return;
     }
+    TransferNotification.start(sessionId: session.sessionId, receiving: true);
     server.ref
         .redux(parentIsolateProvider)
-        .dispatch(IsolateHttpServerPrepareUploadDecisionAction(config: _buildReceiveConfig(updatedSession, fileNameMap)));
+        .dispatch(
+          IsolateHttpServerPrepareUploadDecisionAction(sessionId: session.sessionId, config: _buildReceiveConfig(updatedSession, fileNameMap)),
+        );
+  }
+
+  Future<void> _startDuplicateScan(String sessionId) {
+    _scanCancelToken?.cancel();
+    _scanCancelToken = null;
+    final generation = ++_scanGeneration;
+    late final Future<void> scan;
+    scan = _refreshDuplicates(sessionId, generation).whenComplete(() {
+      if (identical(_duplicateScan, scan)) {
+        _duplicateScan = null;
+      }
+    });
+    _duplicateScan = scan;
+    return scan;
+  }
+
+  Future<void> _refreshDuplicates(String sessionId, int generation) async {
+    final session = server.getStateOrNull()?.session;
+    if (session == null || session.sessionId != sessionId || session.status != SessionStatus.waiting) {
+      return;
+    }
+    bool cancelled() =>
+        _scanGeneration != generation ||
+        _pendingSessionId != sessionId ||
+        server.getStateOrNull()?.session?.sessionId != sessionId ||
+        server.getStateOrNull()?.session?.status != SessionStatus.waiting;
+    var duplicates = <String>{};
+    if (server.ref.read(settingsProvider).skipDuplicateFiles && !session.saveToGallery) {
+      final token = rust_cancel.createCancellationToken();
+      _scanCancelToken = token;
+      final checkedFiles = ValueNotifier<int>(0);
+      final context = Routerino.context;
+      final route = DialogRoute<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => DuplicateCheckDialog(senderAlias: session.senderAlias, checkedFiles: checkedFiles, onCancel: cancelSession),
+      );
+      final oldRoute = _duplicateCheckRoute;
+      if (oldRoute?.isActive == true) {
+        oldRoute!.navigator?.removeRoute(oldRoute);
+      }
+      _duplicateCheckRoute = route;
+      unawaited(Navigator.of(context, rootNavigator: true).push(route));
+      if (checkPlatformHasTray()) {
+        unawaited(showFromTray().catchError((Object error) => _logger.warning('Could not show duplicate check: $error')));
+      }
+      try {
+        duplicates = await findDuplicateFileIds(
+          incomingFiles: session.files.values.map((file) => file.file),
+          destinationDirectory: session.destinationDirectory,
+          calculateHash: (path) async {
+            final hash = await file_hash.calculateFileHash(path: path, bytes: null, cancelToken: token);
+            if (!cancelled()) {
+              checkedFiles.value++;
+            }
+            return hash;
+          },
+          isCancelled: cancelled,
+        );
+      } finally {
+        if (identical(_duplicateCheckRoute, route)) {
+          _duplicateCheckRoute = null;
+        }
+        if (route.isActive) {
+          route.navigator?.removeRoute(route);
+        }
+        checkedFiles.dispose();
+        if (identical(_scanCancelToken, token)) {
+          _scanCancelToken = null;
+        }
+      }
+    }
+    if (cancelled()) {
+      return;
+    }
+    final current = server.getStateOrNull()!.session!;
+    final selected = Map.of(server.ref.read(selectedReceivingFilesProvider));
+    for (final file in current.files.values) {
+      final id = file.file.id;
+      if (duplicates.contains(id) && !current.duplicateFileIds.contains(id)) {
+        selected.remove(id);
+      } else if (!duplicates.contains(id) && current.duplicateFileIds.contains(id)) {
+        selected.putIfAbsent(id, () => file.file.fileName);
+      }
+    }
+    server.ref.notifier(selectedReceivingFilesProvider).setSelection(selected);
+    server.ref
+        .notifier(fileTransferProvider)
+        .setStatuses(
+          sessionId: sessionId,
+          statuses: {
+            for (final file in current.files.values) file.file.id: selected.containsKey(file.file.id) ? FileStatus.queue : FileStatus.skipped,
+          },
+        );
+    server.setState((oldState) => oldState?.copyWith(session: oldState.session?.copyWith(duplicateFileIds: duplicates)));
+    _logger.info('Found ${duplicates.length} duplicate file(s) before upload');
   }
 
   HttpServerReceiveConfig _buildReceiveConfig(ReceiveSessionState session, Map<String, String> fileNameMap) {
@@ -621,12 +791,15 @@ class ReceiveController {
       return;
     }
 
-    server.ref.redux(parentIsolateProvider).dispatch(IsolateHttpServerPrepareUploadDecisionAction(config: null));
+    server.ref.redux(parentIsolateProvider).dispatch(IsolateHttpServerPrepareUploadDecisionAction(sessionId: session.sessionId, config: null));
     closeSession();
   }
 
   /// Updates the destination directory for the current session.
   void setSessionDestinationDir(String destinationDirectory) {
+    if (server.getStateOrNull()?.session?.status != SessionStatus.waiting) {
+      return;
+    }
     server.setState(
       (oldState) => oldState?.copyWith(
         session: oldState.session?.copyWith(
@@ -634,10 +807,17 @@ class ReceiveController {
         ),
       ),
     );
+    final sessionId = server.getStateOrNull()?.session?.sessionId;
+    if (sessionId != null) {
+      unawaited(_startDuplicateScan(sessionId));
+    }
   }
 
   /// Updates the "saveToGallery" setting for the current session.
   void setSessionSaveToGallery(bool saveToGallery) {
+    if (server.getStateOrNull()?.session?.status != SessionStatus.waiting) {
+      return;
+    }
     server.setState(
       (oldState) => oldState?.copyWith(
         session: oldState.session?.copyWith(
@@ -645,6 +825,10 @@ class ReceiveController {
         ),
       ),
     );
+    final sessionId = server.getStateOrNull()?.session?.sessionId;
+    if (sessionId != null) {
+      unawaited(_startDuplicateScan(sessionId));
+    }
   }
 
   /// In addition to [closeSession], this method also
@@ -681,6 +865,7 @@ class ReceiveController {
   }
 
   void closeSession() {
+    invalidatePendingRequest();
     final sessionId = server.getStateOrNull()?.session?.sessionId;
     if (sessionId == null) {
       return;

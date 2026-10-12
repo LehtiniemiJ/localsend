@@ -269,6 +269,13 @@ class SettingsTab extends StatelessWidget {
                     await ref.notifier(settingsProvider).setSaveToHistory(b);
                   },
                 ),
+                _BooleanEntry(
+                  label: t.settingsTab.receive.skipDuplicateFiles,
+                  value: vm.settings.skipDuplicateFiles,
+                  onChanged: (b) async {
+                    await ref.notifier(settingsProvider).setSkipDuplicateFiles(b);
+                  },
+                ),
                 if (vm.advanced)
                   _BooleanEntry(
                     label: t.settingsTab.receive.verifyChecksums,

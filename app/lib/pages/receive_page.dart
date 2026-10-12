@@ -33,6 +33,7 @@ class ReceivePageVm {
   /// Show verify button and device model.
   final bool showSenderInfo;
   final List<FileDto> files;
+  final Set<String> duplicateFileIds;
   final String? message;
   final bool isLink;
   final void Function() onAccept;
@@ -44,6 +45,7 @@ class ReceivePageVm {
     required this.sender,
     required this.showSenderInfo,
     required this.files,
+    required this.duplicateFileIds,
     required this.message,
     required this.onAccept,
     required this.onDecline,
@@ -335,7 +337,7 @@ class _Actions extends StatelessWidget {
       context.global.dispatch(NavigateAction.popUntil<WebSharePage>());
     }
 
-    final onAccept = selectedFiles.isEmpty ? null : vm.onAccept;
+    final onAccept = selectedFiles.isEmpty && vm.duplicateFileIds.isEmpty ? null : vm.onAccept;
 
     return Column(
       children: [
@@ -378,7 +380,7 @@ class _Actions extends StatelessWidget {
                 ),
                 onPressed: onAccept,
                 icon: const Icon(Icons.check_circle),
-                label: Text(t.general.accept),
+                label: Text(selectedFiles.isEmpty && vm.duplicateFileIds.isNotEmpty ? t.general.close : t.general.accept),
               ),
             ],
           ),

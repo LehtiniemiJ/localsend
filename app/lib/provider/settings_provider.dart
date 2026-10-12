@@ -77,6 +77,7 @@ class SettingsService extends PureNotifier<SettingsState> {
     receiveViaLinkAutoAccept: _persistence.getReceiveViaLinkAutoAccept(),
     createChecksums: _persistence.getCreateChecksums(),
     verifyChecksums: _persistence.getVerifyChecksums(),
+    skipDuplicateFiles: _persistence.getSkipDuplicateFiles(),
     discoveryTimeout: _persistence.getDiscoveryTimeout(),
     advancedSettings: _persistence.getAdvancedSettingsEnabled(),
   );
@@ -310,5 +311,10 @@ class SettingsService extends PureNotifier<SettingsState> {
     state = state.copyWith(
       verifyChecksums: verifyChecksums,
     );
+  }
+
+  Future<void> setSkipDuplicateFiles(bool skipDuplicateFiles) async {
+    await _persistence.setSkipDuplicateFiles(skipDuplicateFiles);
+    state = state.copyWith(skipDuplicateFiles: skipDuplicateFiles);
   }
 }

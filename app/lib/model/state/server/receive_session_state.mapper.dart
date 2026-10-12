@@ -71,6 +71,10 @@ class ReceiveSessionStateMapper extends ClassMapperBase<ReceiveSessionState> {
     'saveToGallery',
     _$saveToGallery,
   );
+  static Set<String> _$duplicateFileIds(ReceiveSessionState v) =>
+      v.duplicateFileIds;
+  static const Field<ReceiveSessionState, Set<String>> _f$duplicateFileIds =
+      Field('duplicateFileIds', _$duplicateFileIds, opt: true, def: const {});
   static Set<String> _$createdDirectories(ReceiveSessionState v) =>
       v.createdDirectories;
   static const Field<ReceiveSessionState, Set<String>> _f$createdDirectories =
@@ -88,6 +92,7 @@ class ReceiveSessionStateMapper extends ClassMapperBase<ReceiveSessionState> {
     #destinationDirectory: _f$destinationDirectory,
     #cacheDirectory: _f$cacheDirectory,
     #saveToGallery: _f$saveToGallery,
+    #duplicateFileIds: _f$duplicateFileIds,
     #createdDirectories: _f$createdDirectories,
   };
 
@@ -103,6 +108,7 @@ class ReceiveSessionStateMapper extends ClassMapperBase<ReceiveSessionState> {
       destinationDirectory: data.dec(_f$destinationDirectory),
       cacheDirectory: data.dec(_f$cacheDirectory),
       saveToGallery: data.dec(_f$saveToGallery),
+      duplicateFileIds: data.dec(_f$duplicateFileIds),
       createdDirectories: data.dec(_f$createdDirectories),
     );
   }
@@ -196,6 +202,7 @@ abstract class ReceiveSessionStateCopyWith<
     String? destinationDirectory,
     String? cacheDirectory,
     bool? saveToGallery,
+    Set<String>? duplicateFileIds,
     Set<String>? createdDirectories,
   });
   ReceiveSessionStateCopyWith<$R2, $In, $Out2> $chain<$R2, $Out2>(
@@ -238,6 +245,7 @@ class _ReceiveSessionStateCopyWithImpl<$R, $Out>
     String? destinationDirectory,
     String? cacheDirectory,
     bool? saveToGallery,
+    Set<String>? duplicateFileIds,
     Set<String>? createdDirectories,
   }) => $apply(
     FieldCopyWithData({
@@ -252,6 +260,7 @@ class _ReceiveSessionStateCopyWithImpl<$R, $Out>
         #destinationDirectory: destinationDirectory,
       if (cacheDirectory != null) #cacheDirectory: cacheDirectory,
       if (saveToGallery != null) #saveToGallery: saveToGallery,
+      if (duplicateFileIds != null) #duplicateFileIds: duplicateFileIds,
       if (createdDirectories != null) #createdDirectories: createdDirectories,
     }),
   );
@@ -270,6 +279,7 @@ class _ReceiveSessionStateCopyWithImpl<$R, $Out>
     ),
     cacheDirectory: data.get(#cacheDirectory, or: $value.cacheDirectory),
     saveToGallery: data.get(#saveToGallery, or: $value.saveToGallery),
+    duplicateFileIds: data.get(#duplicateFileIds, or: $value.duplicateFileIds),
     createdDirectories: data.get(
       #createdDirectories,
       or: $value.createdDirectories,

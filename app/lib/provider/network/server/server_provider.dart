@@ -228,6 +228,7 @@ class ServerService extends Notifier<ServerState?> {
 
   Future<void> stopServer() async {
     _logger.info('Stopping server...');
+    _receiveController.invalidatePendingRequest();
     await _subscription?.cancel();
     _subscription = null;
     await ref.redux(parentIsolateProvider).dispatchAsync(IsolateHttpServerStopAction());

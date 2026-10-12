@@ -367,11 +367,15 @@ class IsolateHttpServerStopAction extends AsyncReduxAction<IsolateController, Pa
 /// reports [HttpServerFileUploadEvent], [HttpServerFileUploadProgressEvent]
 /// and [HttpServerFileUploadResultEvent] on the server event stream.
 class IsolateHttpServerPrepareUploadDecisionAction extends ReduxAction<IsolateController, ParentIsolateState> {
+  /// The session ID of the prepare-upload request being answered.
+  final String sessionId;
+
   /// The receive configuration including the accepted file IDs.
   /// `null` declines the request.
   final HttpServerReceiveConfig? config;
 
   IsolateHttpServerPrepareUploadDecisionAction({
+    required this.sessionId,
     required this.config,
   });
 
@@ -387,6 +391,7 @@ class IsolateHttpServerPrepareUploadDecisionAction extends ReduxAction<IsolateCo
         syncState: null,
         data: IsolateTask(
           data: HttpServerPrepareUploadDecisionTask(
+            sessionId: sessionId,
             config: config,
           ),
         ),

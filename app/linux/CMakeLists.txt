@@ -91,6 +91,13 @@ set_target_properties(${BINARY_NAME}
 # them to the application.
 include(flutter/generated_plugins.cmake)
 
+# The Ayatana AppIndicator headers mark app_indicator_new deprecated. The
+# tray_manager plugin still uses it, so keep this warning non-fatal for that
+# plugin while preserving -Werror for the rest of the Linux build.
+if(TARGET tray_manager_plugin)
+  target_compile_options(tray_manager_plugin PRIVATE -Wno-error=deprecated-declarations)
+endif()
+
 
 # === Installation ===
 # By default, "installing" just makes a relocatable bundle in the build

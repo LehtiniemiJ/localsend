@@ -97,7 +97,7 @@ void main() {
             unawaited(
               Future(() async {
                 session = _ReceiveSession(sessionId, files.keys.toSet());
-                await server.respondPrepareUpload(acceptedFileIds: files.keys.toList());
+                await server.respondPrepareUpload(sessionId: sessionId, acceptedFileIds: files.keys.toList());
               }),
             );
           case RsServerEvent_FileUpload(:final sessionId, :final fileId, :final file):

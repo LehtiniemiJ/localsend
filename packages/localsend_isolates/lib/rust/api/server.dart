@@ -116,7 +116,7 @@ abstract class RsHttpServer implements RustOpaqueInterface {
   ///
   /// Passing the accepted file IDs (a subset of the offered files) accepts the request.
   /// Passing `None` declines the request.
-  Future<void> respondPrepareUpload({List<String>? acceptedFileIds});
+  Future<void> respondPrepareUpload({required String sessionId, List<String>? acceptedFileIds});
 
   /// Stops the server.
   /// Returns after the listeners are closed, so the port can be bound again.

@@ -164,6 +164,11 @@ class SettingsStateMapper extends ClassMapperBase<SettingsState> {
     'verifyChecksums',
     _$verifyChecksums,
   );
+  static bool _$skipDuplicateFiles(SettingsState v) => v.skipDuplicateFiles;
+  static const Field<SettingsState, bool> _f$skipDuplicateFiles = Field(
+    'skipDuplicateFiles',
+    _$skipDuplicateFiles,
+  );
   static int _$discoveryTimeout(SettingsState v) => v.discoveryTimeout;
   static const Field<SettingsState, int> _f$discoveryTimeout = Field(
     'discoveryTimeout',
@@ -206,6 +211,7 @@ class SettingsStateMapper extends ClassMapperBase<SettingsState> {
     #receiveViaLinkAutoAccept: _f$receiveViaLinkAutoAccept,
     #createChecksums: _f$createChecksums,
     #verifyChecksums: _f$verifyChecksums,
+    #skipDuplicateFiles: _f$skipDuplicateFiles,
     #discoveryTimeout: _f$discoveryTimeout,
     #advancedSettings: _f$advancedSettings,
   };
@@ -241,6 +247,7 @@ class SettingsStateMapper extends ClassMapperBase<SettingsState> {
       receiveViaLinkAutoAccept: data.dec(_f$receiveViaLinkAutoAccept),
       createChecksums: data.dec(_f$createChecksums),
       verifyChecksums: data.dec(_f$verifyChecksums),
+      skipDuplicateFiles: data.dec(_f$skipDuplicateFiles),
       discoveryTimeout: data.dec(_f$discoveryTimeout),
       advancedSettings: data.dec(_f$advancedSettings),
     );
@@ -342,6 +349,7 @@ abstract class SettingsStateCopyWith<$R, $In extends SettingsState, $Out>
     bool? receiveViaLinkAutoAccept,
     bool? createChecksums,
     bool? verifyChecksums,
+    bool? skipDuplicateFiles,
     int? discoveryTimeout,
     bool? advancedSettings,
   });
@@ -405,6 +413,7 @@ class _SettingsStateCopyWithImpl<$R, $Out>
     bool? receiveViaLinkAutoAccept,
     bool? createChecksums,
     bool? verifyChecksums,
+    bool? skipDuplicateFiles,
     int? discoveryTimeout,
     bool? advancedSettings,
   }) => $apply(
@@ -442,6 +451,7 @@ class _SettingsStateCopyWithImpl<$R, $Out>
         #receiveViaLinkAutoAccept: receiveViaLinkAutoAccept,
       if (createChecksums != null) #createChecksums: createChecksums,
       if (verifyChecksums != null) #verifyChecksums: verifyChecksums,
+      if (skipDuplicateFiles != null) #skipDuplicateFiles: skipDuplicateFiles,
       if (discoveryTimeout != null) #discoveryTimeout: discoveryTimeout,
       if (advancedSettings != null) #advancedSettings: advancedSettings,
     }),
@@ -489,6 +499,10 @@ class _SettingsStateCopyWithImpl<$R, $Out>
     ),
     createChecksums: data.get(#createChecksums, or: $value.createChecksums),
     verifyChecksums: data.get(#verifyChecksums, or: $value.verifyChecksums),
+    skipDuplicateFiles: data.get(
+      #skipDuplicateFiles,
+      or: $value.skipDuplicateFiles,
+    ),
     discoveryTimeout: data.get(#discoveryTimeout, or: $value.discoveryTimeout),
     advancedSettings: data.get(#advancedSettings, or: $value.advancedSettings),
   );

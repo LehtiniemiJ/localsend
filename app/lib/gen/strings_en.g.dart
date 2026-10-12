@@ -437,6 +437,12 @@ class Translations$receivePage$en {
 
   // Translations
 
+  /// en: 'Checking existing files'
+  String get checkingExistingFiles => 'Checking existing files';
+
+  /// en: 'Files checked: {n}'
+  String filesChecked({required Object n}) => 'Files checked: ${n}';
+
   /// en: '(one) {wants to send you a file} (other) {wants to send you {n} files}'
   String subTitle({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(
     n,
@@ -476,6 +482,9 @@ class Translations$receiveOptionsPage$en {
 
   /// en: 'Turned off automatically because there are folders.'
   String get saveToGalleryOff => 'Turned off automatically because there are folders.';
+
+  /// en: 'Already exists'
+  String get duplicate => 'Already exists';
 }
 
 // Path: sendPage
@@ -1141,6 +1150,9 @@ class Translations$settingsTab$receive$en {
 
   /// en: 'Verify checksums when receiving files'
   String get verifyChecksums => 'Verify checksums when receiving files';
+
+  /// en: 'Skip duplicate files with hash-based names'
+  String get skipDuplicateFiles => 'Skip duplicate files with hash-based names';
 }
 
 // Path: settingsTab.send

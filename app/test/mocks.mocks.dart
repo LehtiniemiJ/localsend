@@ -384,6 +384,24 @@ class MockPersistenceService extends _i1.Mock implements _i4.PersistenceService 
           as _i5.Future<void>);
 
   @override
+  bool getSkipDuplicateFiles() =>
+      (super.noSuchMethod(
+            Invocation.method(#getSkipDuplicateFiles, []),
+            returnValue: false,
+            returnValueForMissingStub: false,
+          )
+          as bool);
+
+  @override
+  _i5.Future<void> setSkipDuplicateFiles(bool? skipDuplicateFiles) =>
+      (super.noSuchMethod(
+            Invocation.method(#setSkipDuplicateFiles, [skipDuplicateFiles]),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
   String getMulticastGroup() =>
       (super.noSuchMethod(
             Invocation.method(#getMulticastGroup, []),

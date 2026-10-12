@@ -31,6 +31,10 @@ class SelectedReceivingFilesNotifier extends Notifier<Map<String, String>> {
     state = {...state}..remove(fileId);
   }
 
+  void setSelection(Map<String, String> files) {
+    state = Map.of(files);
+  }
+
   void select(FileDto file) {
     state = {
       ...state,

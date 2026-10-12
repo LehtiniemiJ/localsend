@@ -94,6 +94,7 @@ const _shareViaLinkAutoAccept = 'ls_share_via_link_auto_accept';
 const _receiveViaLinkAutoAccept = 'ls_receive_via_link_auto_accept';
 const _createChecksums = 'ls_create_checksums';
 const _verifyChecksums = 'ls_verify_checksums';
+const _skipDuplicateFiles = 'ls_skip_duplicate_files';
 const _advancedSettingsKey = 'ls_advanced_settings';
 const _whatsNewKey = 'ls_whats_new';
 
@@ -410,6 +411,14 @@ class PersistenceService {
 
   Future<void> setVerifyChecksums(bool verifyChecksums) async {
     await _prefs.setBool(_verifyChecksums, verifyChecksums);
+  }
+
+  bool getSkipDuplicateFiles() {
+    return _prefs.getBool(_skipDuplicateFiles) ?? false;
+  }
+
+  Future<void> setSkipDuplicateFiles(bool skipDuplicateFiles) async {
+    await _prefs.setBool(_skipDuplicateFiles, skipDuplicateFiles);
   }
 
   String getMulticastGroup() {

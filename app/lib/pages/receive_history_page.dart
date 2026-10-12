@@ -151,6 +151,7 @@ class ReceiveHistoryPage extends StatelessWidget {
                                 ),
                                 showSenderInfo: false,
                                 files: [],
+                                duplicateFileIds: {},
                                 message: entry.fileName,
                                 onAccept: () {},
                                 onDecline: () {},

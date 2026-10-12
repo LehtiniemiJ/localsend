@@ -486,11 +486,22 @@ impl RsHttpServer {
     /// Passing `None` declines the request.
     pub async fn respond_prepare_upload(
         &self,
+        session_id: String,
         accepted_file_ids: Option<Vec<String>>,
     ) -> anyhow::Result<()> {
-        let Some((_, decision_tx)) = self.pending_decision.lock().await.take() else {
+        let mut pending = self.pending_decision.lock().await;
+        let Some((pending_session_id, _)) = pending.as_ref() else {
             return Err(anyhow::anyhow!("No pending prepare-upload request"));
         };
+        if pending_session_id != &session_id {
+            return Err(anyhow::anyhow!(
+                "Stale prepare-upload decision for session {session_id}; pending session is {pending_session_id}"
+            ));
+        }
+        let Some((_, decision_tx)) = pending.take() else {
+            unreachable!("pending prepare-upload request was checked above");
+        };
+        drop(pending);
 
         let decision = match accepted_file_ids {
             Some(ids) => PrepareUploadDecisionV2::Accept(ids.into_iter().collect()),

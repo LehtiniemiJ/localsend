@@ -214,7 +214,7 @@ abstract class RustLibApi extends BaseApi {
 
   Future<void> crateApiServerRsHttpServerRespondPrepareDownload({required RsHttpServer that, required String sessionId, required bool accept});
 
-  Future<void> crateApiServerRsHttpServerRespondPrepareUpload({required RsHttpServer that, List<String>? acceptedFileIds});
+  Future<void> crateApiServerRsHttpServerRespondPrepareUpload({required RsHttpServer that, required String sessionId, List<String>? acceptedFileIds});
 
   Future<void> crateApiServerRsHttpServerStop({required RsHttpServer that});
 
@@ -1222,12 +1222,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   );
 
   @override
-  Future<void> crateApiServerRsHttpServerRespondPrepareUpload({required RsHttpServer that, List<String>? acceptedFileIds}) {
+  Future<void> crateApiServerRsHttpServerRespondPrepareUpload({
+    required RsHttpServer that,
+    required String sessionId,
+    List<String>? acceptedFileIds,
+  }) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerRsHttpServer(that, serializer);
+          sse_encode_String(sessionId, serializer);
           sse_encode_opt_list_String(acceptedFileIds, serializer);
           pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 27, port: port_);
         },
@@ -1236,7 +1241,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: sse_decode_AnyhowException,
         ),
         constMeta: kCrateApiServerRsHttpServerRespondPrepareUploadConstMeta,
-        argValues: [that, acceptedFileIds],
+        argValues: [that, sessionId, acceptedFileIds],
         apiImpl: this,
       ),
     );
@@ -1244,7 +1249,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kCrateApiServerRsHttpServerRespondPrepareUploadConstMeta => const TaskConstMeta(
     debugName: 'RsHttpServer_respond_prepare_upload',
-    argNames: ['that', 'acceptedFileIds'],
+    argNames: ['that', 'sessionId', 'acceptedFileIds'],
   );
 
   @override
@@ -6607,8 +6612,8 @@ class RsHttpServerImpl extends RustOpaque implements RsHttpServer {
   ///
   /// Passing the accepted file IDs (a subset of the offered files) accepts the request.
   /// Passing `None` declines the request.
-  Future<void> respondPrepareUpload({List<String>? acceptedFileIds}) =>
-      RustLib.instance.api.crateApiServerRsHttpServerRespondPrepareUpload(that: this, acceptedFileIds: acceptedFileIds);
+  Future<void> respondPrepareUpload({required String sessionId, List<String>? acceptedFileIds}) =>
+      RustLib.instance.api.crateApiServerRsHttpServerRespondPrepareUpload(that: this, sessionId: sessionId, acceptedFileIds: acceptedFileIds);
 
   /// Stops the server.
   /// Returns after the listeners are closed, so the port can be bound again.
